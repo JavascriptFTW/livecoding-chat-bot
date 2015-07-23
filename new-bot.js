@@ -1,41 +1,49 @@
 /* This project is a spinoff of the LCTV chat bot created by Christy94 which can be found here https://github.com/Cristy94/livecoding-chat-bot */
+/*
+Issues
+Bot messes up with colors
+Or not...
+*/
 var Bot = (function() {
 	var container = $('.message-pane');
 	var textarea = $('#message-textarea');
 	var submit = $('input[type="submit"]');
+	var myUser = $('.chat-heading div').text().replace('Chat: ', '');
 
 	$('.message', container).addClass('read');
 
-//Great... FF froze...
+
 
 	var commands = {};
 
 	var internal = {
 		messageQueue: [],
-		names: ["Bob", "Joe", "Mr. Bond"]
+		names: ["Bob", "Joe", "Mr. Bond"],
+		waitingMessage: 0
 	};
 
 	var commandUtil = {};
 
 	var Bot = {
 		name: "Bob the bot",
-		welcome: "Welcome to the stream {{USER}}!"
+		welcome: "Welcome to the stream {{USER}}!",
+		enableWelcome: true
 	};
 	// Initialize the color pallete
 	$('#username-color').trigger('click');
 	$('#context-menu').trigger('mouseout');
+
 	var initialColor = $('#colorPremiumInput').val();
-	console.log(initialColor);
 
 
 	internal.processMessage = function(msg) {
 		if (msg.hasClass("message-info")) {
-			var text = message.text();
+			var text = msg.text();
         
 	        // Someone entered the room
-	        if (text.indexOf(' joined the room.') !== -1) {
+	        if (Bot.enableWelcome && text.indexOf(' joined the room.') !== -1) {
 	            var username = text.slice(0, text.indexOf(' joined the room.'));
-	            postMessage(Bot.welcome.replace("{{USER}}", username));
+	            internal.sendMessage(Bot.welcome.replace("{{USER}}", username));
 	        }
 		} else {
 			var parsedMsg = {
@@ -53,22 +61,25 @@ var Bot = (function() {
 
 	internal.runCommand = function(cmd, sender) {
 		var data = cmd.split(" ");
+
 		data.push(sender || internal.names[Math.floor(Math.random(internal.names.length))]);
 		var command = data.shift();
 
+		if (command.length) command = command[0];
+
 		if (commands[command] !== undefined) {
-			commands[command].apply(commandUtil, data);
+			commands[command].callback.apply(commandUtil, data);
 		}
 	}
 
 	internal.sendMessage = function(msg, sender) {
-		textarea.val((sender || Bot.name) + ": " + msg);
-		submit.trigger("click");
+		$('.user-color-item').eq(0).attr('data-color', '#FFFFFF').trigger('click');
+		internal.waitingMessages += 1;
 		setTimeout(function() {
-			if (internal.messageQueue.length === 0) {
-	    		$('.user-color-item').eq(0).attr('data-color', initialColor).trigger('click');
-	    	}
-		}, 300);
+			textarea.val((sender || Bot.name) + ": " + msg);
+			submit.trigger("click");
+			internal.waitingMessages -= 1;
+		}, 500);
 	}
 
 	internal.getMessages = function() {
@@ -84,14 +95,20 @@ var Bot = (function() {
 		internal.getMessages();
 		if (internal.messageQueue.length > 0) {
 			while (internal.messageQueue.length > 0 && textarea.val() === "") {
-				$('.user-color-item').eq(0).attr('data-color', '#FFFFFF').trigger('click');
-				setTimeout(function() {
-					var message = internal.messageQueue.shift();
-					internal.processMessage(message);
-				}, 500)
+				var message = internal.messageQueue.shift();
+				internal.processMessage(message);
 			}
 		}
-		setTimeout(internal.update, 1);
+
+		if (internal.waitingMessages === 0) {
+			setTimeout(function() {
+				if (internal.waitingMessages === 0) {
+					$('.user-color-item').eq(0).attr('data-color', initialColor).trigger('click');
+				}
+			}, 1000);
+		}
+
+		setTimeout(internal.update, 300);
 	}
 
 
@@ -102,22 +119,23 @@ var Bot = (function() {
 
 
 
-	Bot.setCommand = function(cmd, callback) {
-		var funcRegex = /\((.+)\)(?: |){([^]+)}/;
+	Bot.setCommand = function(cmd, callback, help) {
+		var funcRegex = /\((.+|)\)(?: |){([^]+)}/;
 		/* funcStuff[1] is the functions parameters, funcStuff[2] is the body */
 		var funcStuff = callback.toString().match(funcRegex);
 
 		var data = funcStuff[1].split(/(?:, |,)/g);
 		data.push("with(this){" + funcStuff[2] + "}");
 
-		var command = Function.apply({}, data);
-
-		commands[cmd] = command;
+		commands[cmd] = {
+			callback: Function.apply({}, data),
+			help: help || "No documentation supplied"
+		};
 	}
 
 	Bot.runCommand = function(cmd, args) {
 		if (commands[cmd] !== undefined) {
-			commands[cmd].apply(commandUtil, args);
+			commands[cmd].callback.apply(commandUtil, args);
 		}
 	}
 
@@ -129,6 +147,18 @@ var Bot = (function() {
 
 
 
+	Bot.setCommand("help", function() {
+		var message = "";
+		console.log(commands);
+		for (var i in commands) {
+			message += commands[i].help;
+		}
+		console.log("Helpful message!");
+		sendMessage(message);
+	}, "Prints documentation for all commands");
+
+
+
 	setTimeout(internal.update, 1);
 
 
@@ -137,5 +167,9 @@ var Bot = (function() {
 })();
 
 Bot.setCommand("add", function(a, b) {
-	sendMessage(a + " plus " + b + " equals " + (parseInt(a) + parseInt(b)))
-})
+	sendMessage(a + " plus " + b + " equals " + (parseFloat(a) + parseFloat(b)))
+}, "Adds two numbers. Usage /add a b");
+
+Bot.setCommand("subtract", function(a, b) {
+	sendMessage(a + " minus " + b + " equals " + (parseFloat(a) - parseFloat(b)))
+}, "Subtracts one number from another. Usage /subtract a b");
